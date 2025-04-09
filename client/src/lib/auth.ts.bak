@@ -1,0 +1,148 @@
+import { createContext, useState, useEffect, useContext, ReactNode } from "react";
+import { useLocation } from "wouter";
+import { apiRequest } from "./queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { User } from "./types";
+
+interface AuthContextType {
+  user: User | null;
+  isLoading: boolean;
+  isAdmin: boolean;
+  login: (email: string, password: string, isAdmin?: boolean) => Promise<void>;
+  logout: () => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    // Check if user is logged in on mount
+    const checkAuth = async () => {
+      try {
+        const res = await fetch("/api/auth/me", {
+          credentials: "include",
+        });
+
+        if (res.ok) {
+          const userData = await res.json();
+          setUser(userData);
+        }
+      } catch (error) {
+        console.error("Authentication check failed:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  const login = async (email: string, password: string, isAdmin = false) => {
+    setIsLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/auth/login", { email, password });
+      const userData = await res.json();
+      setUser(userData);
+
+      // Redirect based on user type
+      if (userData.isAdmin) {
+        setLocation("/admin/dashboard");
+      } else {
+        setLocation("/user/home");
+      }
+      
+      toast({
+        title: "Login successful",
+        description: `Welcome back, ${userData.name}!`,
+      });
+    } catch (error) {
+      console.error("Login failed:", error);
+      toast({
+        title: "Login failed",
+        description: error instanceof Error ? error.message : "Invalid credentials",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await apiRequest("POST", "/api/auth/logout");
+      setUser(null);
+      setLocation("/");
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out",
+      });
+    } catch (error) {
+      console.error("Logout failed:", error);
+      toast({
+        title: "Logout failed",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const register = async (name: string, email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/auth/register", {
+        name,
+        email,
+        password,
+        confirmPassword: password,
+        isAdmin: false,
+      });
+      const userData = await res.json();
+      setUser(userData);
+      setLocation("/user/home");
+      toast({
+        title: "Registration successful",
+        description: `Welcome to BookNest, ${userData.name}!`,
+      });
+    } catch (error) {
+      console.error("Registration failed:", error);
+      toast({
+        title: "Registration failed",
+        description: error instanceof Error ? error.message : "Please check your information and try again",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        isAdmin: user?.isAdmin || false,
+        login,
+        logout,
+        register
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+}

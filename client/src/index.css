@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif;
+  }
+}
+
+@layer components {
+  /* Text gradient for headings */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600;
+  }
+  
+  /* Vibrant button with gradient */
+  .btn-gradient {
+    @apply bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700
+           shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1;
+  }
+  
+  /* Card with top gradient border */
+  .card-gradient-border {
+    @apply relative overflow-hidden;
+  }
+  
+  .card-gradient-border::before {
+    content: '';
+    @apply absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500;
+  }
+  
+  /* Animated gradient background for special sections */
+  .animated-gradient-bg {
+    background: linear-gradient(-45deg, #3b82f6, #4f46e5, #8b5cf6, #ec4899);
+    background-size: 400% 400%;
+    animation: gradient 15s ease infinite;
+  }
+  
+  /* Glass effect for cards */
+  .glass-effect {
+    @apply bg-white/90 backdrop-blur-sm border border-white/20;
+  }
+  
+  /* Book card hover effect */
+  .book-card {
+    @apply transition-all duration-300;
+  }
+  
+  .book-card:hover {
+    @apply transform -translate-y-2 shadow-xl;
+  }
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
