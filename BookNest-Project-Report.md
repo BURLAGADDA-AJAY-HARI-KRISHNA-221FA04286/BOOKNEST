@@ -1,0 +1,299 @@
+# BookNest: Book Review Platform
+
+## Project Description
+
+BookNest is a comprehensive book review and discovery platform designed to empower readers through interactive and intelligent features. The platform enables users to browse books, read and write reviews, maintain reading lists, and interact with other readers. The application features two distinct interfaces: one for regular users and another for administrators who manage books, users, and content.
+
+## System Architecture
+
+### Technology Stack
+
+- **Frontend**: React.js with TypeScript, Tailwind CSS
+- **Backend**: Node.js with Express
+- **Database**: MongoDB
+- **Additional Libraries**: 
+  - Shadcn UI for component library
+  - TanStack Query for data fetching
+  - React Hook Form for form management
+  - Zod for validation
+
+### Architecture Diagram
+
+[PLACEHOLDER: Architecture diagram showing the relationship between frontend, backend, and database components]
+
+## Key Features
+
+### Authentication System
+
+The application features a role-based authentication system with two user types:
+- **Admin**: Can manage books, users, and review content
+- **User**: Can browse books, write reviews, and manage personal reading lists
+
+```typescript
+// Authentication functionality example
+app.post("/api/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = loginSchema.parse(req.body);
+    
+    const user = await storage.getUserByEmail(email);
+    if (!user || !await bcrypt.compare(password, user.password)) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+    
+    // Set session
+    req.session.userId = user.id;
+    req.session.isAdmin = user.isAdmin;
+    
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = user;
+    
+    res.status(200).json(userWithoutPassword);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Validation error", errors: error.errors });
+    }
+    res.status(500).json({ message: "Login failed" });
+  }
+});
+```
+
+### Book Verification System
+
+The unique verification system requires users to answer book-related questions before submitting reviews, ensuring authentic feedback from actual readers:
+
+- Admins create three questions with four options each for every book
+- Users must correctly answer these questions to prove they've read the book
+- Only verified users can submit reviews for a specific book
+
+```typescript
+// Verification API example
+app.post("/api/books/:id/verify", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const bookId = parseInt(req.params.id);
+    const { answers } = verifyAnswersSchema.parse({ ...req.body, bookId });
+    
+    const questions = await storage.getVerificationQuestions(bookId);
+    
+    if (questions.length === 0) {
+      return res.status(404).json({ message: "No verification questions found for this book" });
+    }
+    
+    // Check answers
+    const allCorrect = questions.every((question, index) => 
+      answers[index] === question.correctOptionIndex
+    );
+    
+    if (allCorrect) {
+      // Mark as verified in session
+      if (!req.session.isVerified) {
+        req.session.isVerified = {};
+      }
+      req.session.isVerified[bookId] = true;
+      
+      return res.status(200).json({ verified: true, message: "Answers verified successfully" });
+    }
+    
+    res.status(200).json({ verified: false, message: "One or more answers are incorrect" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to verify answers" });
+  }
+});
+```
+
+### Admin Dashboard
+
+The admin interface provides comprehensive management tools:
+
+- Book management (add, edit, delete)
+- Verification question management
+- User management
+- Analytics dashboard with reading statistics
+
+[PLACEHOLDER: Screenshot of admin dashboard]
+
+### User Interface
+
+The user interface offers an engaging reading experience:
+
+- Book browsing and searching
+- Review reading and writing (after verification)
+- Personal reading list management
+- Book recommendations
+
+[PLACEHOLDER: Screenshot of user interface]
+
+## Technical Implementation Details
+
+### Database Schema
+
+```typescript
+// Key database models
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  password: text("password").notNull(),
+  isAdmin: boolean("is_admin").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  joinedAt: timestamp("joined_at").defaultNow().notNull()
+});
+
+export const books = pgTable("books", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  author: text("author").notNull(),
+  publisher: text("publisher"),
+  publishedDate: text("published_date"),
+  description: text("description").notNull(),
+  category: text("category").notNull(),
+  isbn: text("isbn"),
+  coverImage: text("cover_image"),
+  addedAt: timestamp("added_at").defaultNow().notNull(),
+  averageRating: numeric("average_rating").default("0").notNull(),
+  totalReviews: integer("total_reviews").default(0).notNull()
+});
+
+export const verificationQuestions = pgTable("verification_questions", {
+  id: serial("id").primaryKey(),
+  bookId: integer("book_id").notNull(),
+  question: text("question").notNull(),
+  options: jsonb("options").notNull(),
+  correctOptionIndex: integer("correct_option_index").notNull(),
+});
+```
+
+### API Endpoints
+
+The application exposes a RESTful API:
+
+| Method | Endpoint | Description | Access |
+|--------|----------|-------------|--------|
+| POST | /api/auth/register | Register a new user | Public |
+| POST | /api/auth/login | Login to the application | Public |
+| GET | /api/books | Get all books | Public |
+| GET | /api/books/:id | Get book details | Public |
+| POST | /api/books | Add a new book | Admin |
+| PUT | /api/books/:id | Update a book | Admin |
+| DELETE | /api/books/:id | Delete a book | Admin |
+| GET | /api/books/:id/questions | Get verification questions | Public |
+| POST | /api/books/:id/questions | Add verification question | Admin |
+| DELETE | /api/books/:id/questions | Delete all verification questions | Admin |
+| POST | /api/books/:id/verify | Verify book reading | Authenticated |
+| GET | /api/books/:id/reviews | Get book reviews | Public |
+| POST | /api/books/:id/reviews | Add book review | Authenticated |
+
+### Frontend Components
+
+The frontend uses a component-based architecture:
+
+```jsx
+// Example of Books management component in admin interface
+const Books: React.FC = () => {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [sortBy, setSortBy] = useState<string>("latest");
+  const [isAddBookModalOpen, setIsAddBookModalOpen] = useState(false);
+  const [isEditBookModalOpen, setIsEditBookModalOpen] = useState(false);
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [editingQuestions, setEditingQuestions] = useState<VerificationQuestionFormData[]>([]);
+  const [activeTab, setActiveTab] = useState<"details" | "questions">("details");
+
+  // Data fetching with React Query
+  const { data: books, isLoading } = useQuery<Book[]>({
+    queryKey: ["/api/books"],
+  });
+
+  // Book question management
+  const { data: bookQuestions, refetch: refetchBookQuestions } = useQuery<any[]>({
+    queryKey: ["/api/books", selectedBook?.id, "questions"],
+    enabled: !!selectedBook,
+  });
+
+  // Mutations for CRUD operations
+  const updateQuestionsMutation = useMutation({
+    mutationFn: async ({
+      bookId,
+      questions
+    }: {
+      bookId: number;
+      questions: VerificationQuestionFormData[];
+    }) => {
+      // Implementation for updating questions
+    }
+  });
+
+  // UI rendering
+  return (
+    <AdminLayout title="Book Management">
+      {/* Component implementation */}
+    </AdminLayout>
+  );
+};
+```
+
+## Security Implementation
+
+Security has been implemented at multiple levels:
+
+1. **Authentication**: Secure session-based authentication with password hashing
+2. **Authorization**: Role-based access control for admin and user functions
+3. **Input Validation**: Comprehensive request validation using Zod schemas
+4. **Session Management**: Secure session handling with proper timeout and protection
+5. **CSRF Protection**: Implemented CSRF tokens for form submissions
+
+## Testing Strategy
+
+[PLACEHOLDER: Testing approach including unit tests, integration tests, and UI tests]
+
+## Challenges and Solutions
+
+### Challenge 1: Managing Verification Questions
+
+**Problem**: Implementing a flexible system to manage book verification questions that can be easily created, edited, and validated.
+
+**Solution**: Developed a tabbed interface in the book editing modal to manage both book details and verification questions separately. Created a dedicated API endpoint to delete all questions for a book, allowing for complete question set replacement when editing.
+
+```typescript
+// Delete all questions for a book
+app.delete("/api/books/:id/questions", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const bookId = parseInt(req.params.id);
+    const book = await storage.getBook(bookId);
+    if (!book) {
+      return res.status(404).json({ message: "Book not found" });
+    }
+    
+    // Get all questions for this book
+    const questions = await storage.getVerificationQuestions(bookId);
+    
+    // Delete each question
+    for (const question of questions) {
+      await storage.deleteVerificationQuestion(question.id);
+    }
+    
+    res.status(200).json({ message: "All questions deleted for book" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete verification questions" });
+  }
+});
+```
+
+### Challenge 2: Ensuring Data Consistency
+
+**Problem**: Maintaining data consistency when deleting books that have associated reviews, verification questions, and reading list entries.
+
+**Solution**: Implemented cascade delete functionality to remove all related data when a book is deleted, preventing orphaned records and ensuring database integrity.
+
+## Future Enhancements
+
+1. **Social Features**: User following, sharing, and commenting on reviews
+2. **Advanced Recommendations**: Machine learning-based book recommendations
+3. **Reading Progress Tracking**: More detailed reading progress tracking with page counts and time estimates
+4. **Mobile Application**: Native mobile applications for iOS and Android
+5. **Book Clubs**: Virtual book club feature for group discussions
+
+## Conclusion
+
+BookNest provides a robust platform for book enthusiasts to discover, review, and engage with books. The verification system ensures authentic reviews, while the admin tools provide comprehensive management capabilities. The application's modular architecture allows for easy maintenance and future expansion.
+
+[PLACEHOLDER: Final project screenshots and insights]
